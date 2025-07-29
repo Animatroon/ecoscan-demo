@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест камеры</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 2rem;
+            background: #f0f0f0;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        video {
+            width: 100%;
+            max-width: 400px;
+            height: 300px;
+            background: #000;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+        
+        button {
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 0.5rem;
+            background: #4CAF50;
+            color: white;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        .error {
+            color: #f44336;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: #ffebee;
+            border-radius: 6px;
+        }
+        
+        .success {
+            color: #4CAF50;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: #e8f5e8;
+            border-radius: 6px;
+        }
+        
+        .info {
+            margin: 1rem 0;
+            padding: 1rem;
+            background: #e3f2fd;
+            border-radius: 6px;
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 Тест камеры для EcoScan</h1>
+        
+        <div id="status" class="info">
+            Нажмите "Запустить камеру" для тестирования
+        </div>
+        
+        <video id="video" autoplay playsinline muted></video>
+        
+        <div>
+            <button id="startBtn">📹 Запустить камеру</button>
+            <button id="stopBtn" disabled>⏹️ Остановить камеру</button>
+        </div>
+        
+        <div id="details"></div>
+        
+        <div class="info">
+            <h3>Инструкции:</h3>
+            <ul style="text-align: left;">
+                <li>Убедитесь, что у вас есть камера</li>
+                <li>Разрешите доступ к камере в браузере</li>
+                <li>Проверьте, что камера не используется другими приложениями</li>
+                <li>Попробуйте обновить страницу, если камера не работает</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const status = document.getElementById('status');
+        const details = document.getElementById('details');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        
+        let stream = null;
+
+        function updateStatus(message, type = 'info') {
+            status.className = type;
+            status.textContent = message;
+            console.log(message);
+        }
+
+        function updateDetails(info) {
+            details.innerHTML = `
+                <div class="info">
+                    <h4>Информация о камере:</h4>
+                    <pre style="text-align: left; font-size: 0.9rem;">${info}</pre>
+                </div>
+            `;
+        }
+
+        async function startCamera() {
+            try {
+                updateStatus('🔄 Запускаем камеру...', 'info');
+                
+                // Проверяем поддержку API
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Camera API не поддерживается в этом браузере');
+                }
+
+                // Получаем список устройств
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                updateDetails(`
+Найдено видеоустройств: ${videoDevices.length}
+
+Устройства:
+${videoDevices.map((device, i) => `${i+1}. ${device.label || 'Неизвестная камера'} (${device.deviceId.substring(0, 20)}...)`).join('\n')}
+
+Браузер: ${navigator.userAgent}
+Протокол: ${location.protocol}
+                `);
+
+                if (videoDevices.length === 0) {
+                    throw new Error('Видеоустройства не найдены');
+                }
+
+                // Запрашиваем доступ к камере
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'environment'
+                    },
+                    audio: false
+                });
+
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    updateStatus('✅ Камера работает!', 'success');
+                };
+                
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+
+            } catch (error) {
+                let errorMessage = error.message;
+                let troubleshooting = '';
+                
+                if (error.name === 'NotAllowedError' || errorMessage.includes('Permission denied')) {
+                    errorMessage = 'Доступ к камере заблокирован';
+                    troubleshooting = 'Нажмите на значок камеры в адресной строке и разрешите доступ';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = 'Камера не найдена';
+                    troubleshooting = 'Убедитесь, что камера подключена к устройству';
+                } else if (error.name === 'NotReadableError') {
+                    errorMessage = 'Камера занята';
+                    troubleshooting = 'Закройте другие приложения, использующие камеру';
+                } else if (errorMessage.includes('https')) {
+                    errorMessage = 'Требуется HTTPS для доступа к камере';
+                    troubleshooting = 'Откройте файл через локальный сервер или загрузите на HTTPS сайт';
+                }
+                
+                updateStatus(`❌ Ошибка: ${errorMessage}`, 'error');
+                updateDetails(`
+Ошибка: ${error.name || 'Unknown'}
+Сообщение: ${error.message}
+Решение: ${troubleshooting}
+
+Тип ошибки: ${typeof error}
+Stack: ${error.stack || 'N/A'}
+                `);
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            video.srcObject = null;
+            updateStatus('⏹️ Камера остановлена', 'info');
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
+
+        // Автоматически пытаемся запустить камеру при загрузке
+        window.addEventListener('load', () => {
+            setTimeout(startCamera, 1000);
+        });
+    </script>
+</body>
+</html>
